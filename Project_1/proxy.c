@@ -67,14 +67,16 @@ int main(int argc, char *argv[]) {
     parse_args(argc, argv);
 
     // Initialize OpenSSL library
-	SSL_METHOD *ssl_method = TLS_method();
+	SSL_load_error_strings();
+	OpenSSL_add_ssl_algorithms();
+	SSL_METHOD *ssl_method = TLS_method(); // could try deprecated TLS_server_method()
     
 	// Create SSL context
 	SSL_CTX *ssl_ctx = SSL_CTX_new(ssl_method);
 
 	// Load certificate file
-	//SSL_CTX_use_certificate_file(ssl_ctx, "server.crt", SSL_FILETYPE_PEM); // dont use? see manpage: SSL_CTX_use_certificate(3)
-	SSL_CTX_use_certificate_chain_file(ssl_ctx, "server.crt");
+	SSL_CTX_use_certificate_file(ssl_ctx, "server.crt", SSL_FILETYPE_PEM); // dont use? see manpage: SSL_CTX_use_certificate(3)
+	//SSL_CTX_use_certificate_chain_file(ssl_ctx, "server.crt");
 
 	// Load key file
 	SSL_CTX_use_PrivateKey_file(ssl_ctx, "server.key", SSL_FILETYPE_PEM);
@@ -157,6 +159,7 @@ int main(int argc, char *argv[]) {
 
     // TODO: Clean up SSL context
 	SSL_CTX_free(ssl_ctx);
+	ssl_ctx = NULL;
     
     return 0;
 }
