@@ -232,7 +232,7 @@ void handle_request(SSL *ssl) {
     }
 }
 
-// TODO: Serve local file with correct Content-Type header
+// Serve local file with correct Content-Type header
 // Support: .html, .txt, .jpg, .m3u8, and files without extension
 void send_local_file(SSL *ssl, const char *path) {
     FILE *file = fopen(path, "rb");
@@ -255,7 +255,13 @@ void send_local_file(SSL *ssl, const char *path) {
     if (strstr(path, ".html")) {
         response = "HTTP/1.1 200 OK\r\n"
                    "Content-Type: text/html; charset=UTF-8\r\n\r\n";
-    } else {
+	} else if (strstr(path, ".jpg")) {
+        response = "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: image/jpeg; charset=UTF-8\r\n\r\n";
+	} else if (strstr(path, ".m3u8")) {
+        response = "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: application/vnd.apple.mpegurl; charset=UTF-8\r\n\r\n";
+    } else { // including .txt
         response = "HTTP/1.1 200 OK\r\n"
                    "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
     }
