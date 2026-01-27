@@ -7,6 +7,8 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#include <openssl/bio.h>
+
 #define BUFFER_SIZE 1024
 #define DEFAULT_LOCAL_PORT_TO_CLIENT 8443
 #define DEFAULT_REMOTE_HOST "127.0.0.1"
@@ -124,16 +126,22 @@ int main(int argc, char *argv[]) {
         
         // TODO: Create SSL structure for this connection and perform SSL handshake
         SSL *ssl = SSL_new(ssl_ctx);
+		SSL_set_accept_state(ssl);
 
+		if (!SSL_is_server) {
+			fprintf(stderr, "Error: SSL is not in accept state.\n");
+		}
+
+		//int ssl_handshake_error = SSL_accept(ssl);
 		int ssl_handshake_error = SSL_do_handshake(ssl);
+
 		if (ssl_handshake_error == 0) {
 			fprintf(stderr, "Error: TLS/SSL handshake not successful but was shut down controlled and by the specifications of the TLS/SSL protocol.\n");
 		}
 		if (ssl_handshake_error > 0) {
 			fprintf(stderr, "Error: TLS/SSL handshake not successful due to fatal error at protocol level or a connection failure occurred\n");
 		}
-        
-        
+
         if (ssl != NULL) {
             handle_request(ssl);
         }
@@ -170,8 +178,16 @@ void handle_request(SSL *ssl) {
 
     // TODO: Read request from SSL connection
     bytes_read = 0;
-    
+
+	int ssl_read_err = SSL_read_ex(ssl, buffer, 50, &bytes_read);
+
+	if (ssl_read_err <= 0) {
+		printf("error %i\n", ssl_read_err);
+		if (SSL_get_error(ssl, ssl_read_err) == SSL_ERROR_SSL) { printf("this\n"); } // TODO: keeps receiving EOF?
+	}
+
     if (bytes_read <= 0) {
+		fprintf(stderr, "Error: %i bytes read\n", bytes_read);
         return;
     }
 
@@ -210,6 +226,7 @@ void send_local_file(SSL *ssl, const char *path) {
                          "<!DOCTYPE html><html><head><title>404 Not Found</title></head>"
                          "<body><h1>404 Not Found</h1></body></html>";
         // TODO: Send response via SSL
+		SSL_write(ssl, response, strlen(response));
         
         return;
     }
@@ -224,11 +241,13 @@ void send_local_file(SSL *ssl, const char *path) {
     }
 
     // TODO: Send response header and file content via SSL
-    
+
+	// Send response header via SSL
+	SSL_write(ssl, response, strlen(response));
 
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
         // TODO: Send file data via SSL
-        
+		SSL_write(ssl, file, 1);
     }
 
     fclose(file);
