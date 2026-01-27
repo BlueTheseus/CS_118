@@ -31,13 +31,32 @@ int main(int argc, char *argv[]) {
 
     parse_args(argc, argv);
 
-    // TODO: Initialize OpenSSL library
+    // Initialize OpenSSL library
+    if (!OPENSSL_init_ssl(0, NULL)) {
+        perror("openssl init failed");
+        exit(EXIT_FAILURE);
+    }
     
-    
-    // TODO: Create SSL context and load certificate/private key files
+    // Create SSL context and load certificate/private key files
     // Files: "server.crt" and "server.key"
-    SSL_CTX *ssl_ctx = NULL;
-    
+    SSL_CTX *ssl_ctx = SSL_CTX_new(TLS_server_method());
+    if (!ssl_ctx) {
+        perror("create SSL context failed");
+        exit(EXIT_FAILURE);
+    }
+    if (SSL_CTX_use_certificate_file(ssl_ctx, "server.crt", SSL_FILETYPE_PEM) != 1) {
+        perror("SSL load cert failed");
+        exit(EXIT_FAILURE);
+    }
+        if (SSL_CTX_use_PrivateKey_file(ssl_ctx, "server.key", SSL_FILETYPE_PEM) != 1) {
+        perror("SSL load key failed");
+        exit(EXIT_FAILURE);
+    }
+    if (!SSL_CTX_check_private_key(ssl_ctx)) {
+        perror("PKey and Cert don't match");
+        exit(EXIT_FAILURE);
+    }
+
     if (ssl_ctx == NULL) {
         fprintf(stderr, "Error: SSL context not initialized\n");
         exit(EXIT_FAILURE);
@@ -77,22 +96,23 @@ int main(int argc, char *argv[]) {
         
         printf("Accepted connection from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
         
-        // TODO: Create SSL structure for this connection and perform SSL handshake
-        SSL *ssl = NULL;
-        
+        // Create SSL structure for this connection and perform SSL handshake
+        SSL *ssl = SSL_new(ssl_ctx);
         
         if (ssl != NULL) {
             handle_request(ssl);
         }
         
-        // TODO: Clean up SSL connection
-        
+        // Clean up SSL connection
+        SSL_shutdown(ssl);
+        SSL_free(ssl);
         
         close(client_socket);
     }
 
     close(server_socket);
-    // TODO: Clean up SSL context
+    // Clean up SSL context
+    SSL_CTX_free(ssl_ctx);
     
     return 0;
 }
