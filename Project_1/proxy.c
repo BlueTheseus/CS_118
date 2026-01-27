@@ -124,6 +124,14 @@ int main(int argc, char *argv[]) {
         
         // TODO: Create SSL structure for this connection and perform SSL handshake
         SSL *ssl = SSL_new(ssl_ctx);
+
+		int ssl_handshake_error = SSL_do_handshake(ssl);
+		if (ssl_handshake_error == 0) {
+			fprintf(stderr, "Error: TLS/SSL handshake not successful but was shut down controlled and by the specifications of the TLS/SSL protocol.\n");
+		}
+		if (ssl_handshake_error > 0) {
+			fprintf(stderr, "Error: TLS/SSL handshake not successful due to fatal error at protocol level or a connection failure occurred\n");
+		}
         
         
         if (ssl != NULL) {
