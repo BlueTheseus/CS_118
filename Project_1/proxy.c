@@ -21,8 +21,6 @@ void send_local_file(SSL *ssl, const char *path);
 void proxy_remote_file(SSL *ssl, const char *request);
 int file_exists(const char *filename);
 
-// TODO: Parse command-line arguments (-b/-r/-p) and override defaults.
-// Keep behavior consistent with the project spec.
 /* command-line arguments:
  * -b  local port
  * -r  remote host IP address
@@ -36,19 +34,15 @@ void parse_args(int argc, char *argv[]) {
 	{
 		if (argv[i][0] == '-')
 		{
-			//printf("parse option: ");
 			switch (argv[i][1])
 			{
 				case 'b':
-					//printf("b = %s", argv[i+1]);
 					LOCAL_PORT_TO_CLIENT = atoi(argv[i+1]);
 					break;
 				case 'r':
-					//printf("r = %s", argv[i+1]);
 					strcpy(REMOTE_HOST, argv[i+1]);
 					break;
 				case 'p':
-					//printf("p = %s", argv[i+1]);
 					REMOTE_PORT = atoi(argv[i+1]);
 					break;
 			};
