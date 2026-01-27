@@ -99,6 +99,11 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+	if (SSL_CTX_get0_certificate(ssl_ctx) == NULL) {
+		fprintf(stderr, "Error: No active certificate in SSL context\n");
+		exit(EXIT_FAILURE);
+	}
+
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
         perror("socket failed");
@@ -202,6 +207,7 @@ void handle_request(SSL *ssl) {
 	}
 
     if (bytes_read <= 0) {
+		fprintf(stderr, "Error: %i bytes read\n", bytes_read);
         return;
     }
 
@@ -217,6 +223,12 @@ void handle_request(SSL *ssl) {
     }
     char *http_version = strtok(NULL, " ");
 
+	char *to_replace = strstr(file_name, "%20");
+	if (to_replace != NULL) {
+		memcpy(to_replace, " ", 1);
+		memmove(to_replace + 1, to_replace + 3, strlen(to_replace + 3) + 1);
+	}
+
     if (file_exists(file_name)) {
         printf("Sending local file %s\n", file_name);
         send_local_file(ssl, file_name);
@@ -226,7 +238,7 @@ void handle_request(SSL *ssl) {
     }
 }
 
-// TODO: Serve local file with correct Content-Type header
+// Serve local file with correct Content-Type header
 // Support: .html, .txt, .jpg, .m3u8, and files without extension
 void send_local_file(SSL *ssl, const char *path) {
     FILE *file = fopen(path, "rb");
@@ -249,9 +261,18 @@ void send_local_file(SSL *ssl, const char *path) {
     if (strstr(path, ".html")) {
         response = "HTTP/1.1 200 OK\r\n"
                    "Content-Type: text/html; charset=UTF-8\r\n\r\n";
-    } else {
+	} else if (strstr(path, ".txt")) {
         response = "HTTP/1.1 200 OK\r\n"
                    "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
+	} else if (strstr(path, ".jpg")) {
+        response = "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: image/jpeg; charset=UTF-8\r\n\r\n";
+	} else if (strstr(path, ".m3u8")) {
+        response = "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: application/vnd.apple.mpegurl; charset=UTF-8\r\n\r\n";
+    } else {
+        response = "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: application/octet-stream; charset=UTF-8\r\n\r\n";
     }
 
     // Send response header and file content via SSL
