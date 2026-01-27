@@ -7,6 +7,8 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#include <openssl/bio.h>
+
 #define BUFFER_SIZE 1024
 #define DEFAULT_LOCAL_PORT_TO_CLIENT 8443
 #define DEFAULT_REMOTE_HOST "127.0.0.1"
@@ -21,8 +23,6 @@ void send_local_file(SSL *ssl, const char *path);
 void proxy_remote_file(SSL *ssl, const char *request);
 int file_exists(const char *filename);
 
-// TODO: Parse command-line arguments (-b/-r/-p) and override defaults.
-// Keep behavior consistent with the project spec.
 /* command-line arguments:
  * -b  local port
  * -r  remote host IP address
@@ -36,19 +36,15 @@ void parse_args(int argc, char *argv[]) {
 	{
 		if (argv[i][0] == '-')
 		{
-			//printf("parse option: ");
 			switch (argv[i][1])
 			{
 				case 'b':
-					//printf("b = %s", argv[i+1]);
 					LOCAL_PORT_TO_CLIENT = atoi(argv[i+1]);
 					break;
 				case 'r':
-					//printf("r = %s", argv[i+1]);
 					strcpy(REMOTE_HOST, argv[i+1]);
 					break;
 				case 'p':
-					//printf("p = %s", argv[i+1]);
 					REMOTE_PORT = atoi(argv[i+1]);
 					break;
 			};
@@ -70,13 +66,34 @@ int main(int argc, char *argv[]) {
 
     parse_args(argc, argv);
 
-    // TODO: Initialize OpenSSL library
+    // Initialize OpenSSL library
+    if (!OPENSSL_init_ssl(0, NULL)) {
+        perror("openssl init failed");
+        exit(EXIT_FAILURE);
+    }
+
+	SSL_METHOD *ssl_method = TLS_server_method();
     
-    
-    // TODO: Create SSL context and load certificate/private key files
+    // Create SSL context and load certificate/private key files
     // Files: "server.crt" and "server.key"
-    SSL_CTX *ssl_ctx = NULL;
-    
+    SSL_CTX *ssl_ctx = SSL_CTX_new(TLS_server_method());
+    if (!ssl_ctx) {
+        perror("create SSL context failed");
+        exit(EXIT_FAILURE);
+    }
+    if (SSL_CTX_use_certificate_chain_file(ssl_ctx, "server.crt") != 1) {
+        perror("SSL load cert failed");
+        exit(EXIT_FAILURE);
+    }
+    if (SSL_CTX_use_PrivateKey_file(ssl_ctx, "server.key", SSL_FILETYPE_PEM) != 1) {
+        perror("SSL load key failed");
+        exit(EXIT_FAILURE);
+    }
+    if (!SSL_CTX_check_private_key(ssl_ctx)) {
+        perror("PKey and Cert don't match");
+        exit(EXIT_FAILURE);
+    }
+
     if (ssl_ctx == NULL) {
         fprintf(stderr, "Error: SSL context not initialized\n");
         exit(EXIT_FAILURE);
@@ -108,6 +125,7 @@ int main(int argc, char *argv[]) {
     printf("Proxy server listening on port %d\n", LOCAL_PORT_TO_CLIENT);
 
     while (1) {
+        client_len = sizeof(client_addr);
         client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &client_len);
         if (client_socket == -1) {
             perror("accept failed");
@@ -116,22 +134,45 @@ int main(int argc, char *argv[]) {
         
         printf("Accepted connection from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
         
-        // TODO: Create SSL structure for this connection and perform SSL handshake
-        SSL *ssl = NULL;
-        
-        
+        // Create SSL structure for this connection and perform SSL handshake
+        SSL *ssl = SSL_new(ssl_ctx);
+
+		SSL_set_accept_state(ssl);
+        SSL_set_fd(ssl, client_socket);
+
+		if (!SSL_is_server) {
+			fprintf(stderr, "Error: SSL is not in accept state.\n");
+		}
+
+		//int ssl_handshake_error = SSL_accept(ssl);
+		int ssl_handshake_error = SSL_do_handshake(ssl);
+
+		if (ssl_handshake_error == 0) {
+			fprintf(stderr, "Error: TLS/SSL handshake not successful but was shut down controlled and by the specifications of the TLS/SSL protocol.\n");
+		}
+		if (ssl_handshake_error < 0) {
+			fprintf(stderr, "Error: TLS/SSL handshake not successful due to fatal error at protocol level or a connection failure occurred\n");
+		}
+
         if (ssl != NULL) {
             handle_request(ssl);
         }
         
-        // TODO: Clean up SSL connection
-        
-        
+        if (SSL_accept(ssl) <= 0) {
+            ERR_print_errors_fp(stderr);
+        }
+
+        // Clean up SSL connection
+        SSL_shutdown(ssl);
+		SSL_free(ssl);
+
         close(client_socket);
     }
 
     close(server_socket);
-    // TODO: Clean up SSL context
+
+    // Clean up SSL context
+	SSL_CTX_free(ssl_ctx);
     
     return 0;
 }
@@ -145,15 +186,21 @@ int file_exists(const char *filename) {
     return 0;
 }
 
-// TODO: Parse HTTP request, extract file path, and route to appropriate handler
+// Parse HTTP request, extract file path, and route to appropriate handler
 // Consider: URL decoding, default files, routing logic for different file types
 void handle_request(SSL *ssl) {
     char buffer[BUFFER_SIZE];
     ssize_t bytes_read;
 
-    // TODO: Read request from SSL connection
+    // Read request from SSL connection
     bytes_read = 0;
-    
+
+	int ssl_read_err = SSL_read_ex(ssl, buffer, 50, &bytes_read);
+
+	if (ssl_read_err <= 0) {
+		printf("error %i\n", ssl_read_err);
+	}
+
     if (bytes_read <= 0) {
         return;
     }
@@ -192,11 +239,12 @@ void send_local_file(SSL *ssl, const char *path) {
                          "Content-Type: text/html; charset=UTF-8\r\n\r\n"
                          "<!DOCTYPE html><html><head><title>404 Not Found</title></head>"
                          "<body><h1>404 Not Found</h1></body></html>";
-        // TODO: Send response via SSL
-        
+
+        // Send response via SSL
+		SSL_write(ssl, response, strlen(response));
         return;
     }
-
+    
     char *response;
     if (strstr(path, ".html")) {
         response = "HTTP/1.1 200 OK\r\n"
@@ -206,12 +254,21 @@ void send_local_file(SSL *ssl, const char *path) {
                    "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
     }
 
-    // TODO: Send response header and file content via SSL
-    
+    // Send response header and file content via SSL
+	SSL_write(ssl, response, strlen(response));
 
     while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-        // TODO: Send file data via SSL
-        
+        size_t total_written = 0;
+        while (total_written < bytes_read) {
+            int ret = SSL_write(ssl, buffer + total_written, bytes_read - total_written);
+            if (ret <= 0) {
+                int err = SSL_get_error(ssl, ret);
+                if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) continue;
+                ERR_print_errors_fp(stderr);
+                break;
+            }
+            total_written += ret;
+        }
     }
 
     fclose(file);
