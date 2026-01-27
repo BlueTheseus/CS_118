@@ -255,15 +255,18 @@ void send_local_file(SSL *ssl, const char *path) {
     if (strstr(path, ".html")) {
         response = "HTTP/1.1 200 OK\r\n"
                    "Content-Type: text/html; charset=UTF-8\r\n\r\n";
+	} else if (strstr(path, ".txt")) {
+        response = "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
 	} else if (strstr(path, ".jpg")) {
         response = "HTTP/1.1 200 OK\r\n"
                    "Content-Type: image/jpeg; charset=UTF-8\r\n\r\n";
 	} else if (strstr(path, ".m3u8")) {
         response = "HTTP/1.1 200 OK\r\n"
                    "Content-Type: application/vnd.apple.mpegurl; charset=UTF-8\r\n\r\n";
-    } else { // including .txt
+    } else {
         response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
+                   "Content-Type: application/octet-stream; charset=UTF-8\r\n\r\n";
     }
 
     // Send response header and file content via SSL
