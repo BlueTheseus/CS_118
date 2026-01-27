@@ -8,9 +8,13 @@
 #include <openssl/err.h>
 
 #define BUFFER_SIZE 1024
-#define LOCAL_PORT_TO_CLIENT 8443
-#define REMOTE_HOST "127.0.0.1"
-#define REMOTE_PORT 5001
+#define DEFAULT_LOCAL_PORT_TO_CLIENT 8443
+#define DEFAULT_REMOTE_HOST "127.0.0.1"
+#define DEFAULT_REMOTE_PORT 5001
+
+int LOCAL_PORT_TO_CLIENT = 8443;
+char REMOTE_HOST[] = "127.0.0.1";
+int REMOTE_PORT = 5001;
 
 void handle_request(SSL *ssl);
 void send_local_file(SSL *ssl, const char *path);
@@ -19,9 +23,44 @@ int file_exists(const char *filename);
 
 // TODO: Parse command-line arguments (-b/-r/-p) and override defaults.
 // Keep behavior consistent with the project spec.
+/* command-line arguments:
+ * -b  local port
+ * -r  remote host IP address
+ * -p  remote port
+ */
 void parse_args(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
+
+	for (int i = 0; i < argc; i++)
+	{
+		if (argv[i][0] == '-')
+		{
+			//printf("parse option: ");
+			switch (argv[i][1])
+			{
+				case 'b':
+					//printf("b = %s", argv[i+1]);
+					LOCAL_PORT_TO_CLIENT = atoi(argv[i+1]);
+					break;
+				case 'r':
+					//printf("r = %s", argv[i+1]);
+					strcpy(REMOTE_HOST, argv[i+1]);
+					break;
+				case 'p':
+					//printf("p = %s", argv[i+1]);
+					REMOTE_PORT = atoi(argv[i+1]);
+					break;
+			};
+			printf("\n");
+		}
+	}
+
+	printf("\nset options:\n\tLocal port: %i (default 8443)\n\tRemote host: %s (default 127.0.0.1)\n\tRemote port: %i (default 5001)\n\n",
+			LOCAL_PORT_TO_CLIENT,
+			REMOTE_HOST,
+			REMOTE_PORT
+	      );
 }
 
 int main(int argc, char *argv[]) {
