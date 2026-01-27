@@ -64,17 +64,29 @@ int main(int argc, char *argv[]) {
 
     parse_args(argc, argv);
 
-    // TODO: Initialize OpenSSL library
+    // Initialize OpenSSL library
+	SSL_METHOD *ssl_method = TLS_method();
     
-    
-    // TODO: Create SSL context and load certificate/private key files
-    // Files: "server.crt" and "server.key"
-    SSL_CTX *ssl_ctx = NULL;
+	// Create SSL context
+	SSL_CTX *ssl_ctx = SSL_CTX_new(ssl_method);
+
+	// Load certificate file
+	//SSL_CTX_use_certificate_file(ssl_ctx, "server.crt", SSL_FILETYPE_PEM); // dont use? see manpage: SSL_CTX_use_certificate(3)
+	SSL_CTX_use_certificate_chain_file(ssl_ctx, "server.crt");
+
+	// Load key file
+	SSL_CTX_use_PrivateKey_file(ssl_ctx, "server.key", SSL_FILETYPE_PEM);
+
     
     if (ssl_ctx == NULL) {
         fprintf(stderr, "Error: SSL context not initialized\n");
         exit(EXIT_FAILURE);
     }
+
+	if (SSL_CTX_get0_certificate(ssl_ctx) == NULL) {
+		fprintf(stderr, "Error: No active certificate in SSL context\n");
+		exit(EXIT_FAILURE);
+	}
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
@@ -111,7 +123,7 @@ int main(int argc, char *argv[]) {
         printf("Accepted connection from %s:%d\n", inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
         
         // TODO: Create SSL structure for this connection and perform SSL handshake
-        SSL *ssl = NULL;
+        SSL *ssl = SSL_new(ssl_ctx);
         
         
         if (ssl != NULL) {
@@ -119,13 +131,16 @@ int main(int argc, char *argv[]) {
         }
         
         // TODO: Clean up SSL connection
+		SSL_free(ssl);
         
         
         close(client_socket);
     }
 
     close(server_socket);
+
     // TODO: Clean up SSL context
+	SSL_CTX_free(ssl_ctx);
     
     return 0;
 }
