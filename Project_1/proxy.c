@@ -201,7 +201,7 @@ void handle_request(SSL *ssl) {
     // Read request from SSL connection
     bytes_read = 0;
 
-	int ssl_read_err = SSL_read_ex(ssl, buffer, 50, &bytes_read);
+	int ssl_read_err = SSL_read_ex(ssl, buffer, 1024, &bytes_read);
 
 	if (ssl_read_err <= 0) {
 		printf("error %i\n", ssl_read_err);
@@ -308,7 +308,7 @@ void send_local_file(SSL *ssl, const char *path) {
     fclose(file);
 }
 
-// TODO: Forward request to backend server and relay response to client
+// Forward request to backend server and relay response to client
 // Handle connection failures appropriately
 void proxy_remote_file(SSL *ssl, const char *request) {
     int remote_socket;
@@ -350,9 +350,20 @@ void proxy_remote_file(SSL *ssl, const char *request) {
     send(remote_socket, request, strlen(request), 0);
 
     while ((bytes_read = recv(remote_socket, buffer, sizeof(buffer), 0)) > 0) {
-        // TODO: Forward response to client via SSL
-        
+        // Forward response to client via SSL
+        size_t total_written = 0;
+        while (total_written < bytes_read) {
+            int ret = SSL_write(ssl, buffer + total_written, bytes_read - total_written);
+            if (ret <= 0) {
+                int err = SSL_get_error(ssl, ret);
+                if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) continue;
+                ERR_print_errors_fp(stderr);
+                break;
+            }
+            total_written += ret;
+        }
     }
 
     close(remote_socket);
+    return;
 }
