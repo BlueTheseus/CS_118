@@ -47,10 +47,11 @@ Accept the certificate warning (self-signed certificate).
 ### curl:
 
 ```bash
-curl -k https://localhost:8443/test.html
+curl -k -i https://localhost:8443/test.html
 ```
 
 The `-k` flag accepts self-signed certificates.
+The `-i` flag outputs the contents of the HTTP response header.
 
 ### Binary file test:
 
