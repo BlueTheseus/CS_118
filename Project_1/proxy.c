@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <sys/stat.h>
 
 #include <openssl/bio.h>
 
@@ -263,23 +264,30 @@ void send_local_file(SSL *ssl, const char *path) {
         return;
     }
     
-    char *response;
+    char *content_type;
     if (strstr(path, ".html")) {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: text/html; charset=UTF-8\r\n\r\n";
+        content_type = "text/html";
 	} else if (strstr(path, ".txt")) {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
+        content_type = "text/plain";
 	} else if (strstr(path, ".jpg")) {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: image/jpeg; charset=UTF-8\r\n\r\n";
+        content_type = "image/jpeg";
 	} else if (strstr(path, ".m3u8")) {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: application/vnd.apple.mpegurl; charset=UTF-8\r\n\r\n";
+        content_type = "application/vnd.apple.mpegurl";
     } else {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: application/octet-stream; charset=UTF-8\r\n\r\n";
+        content_type = "application/octet-stream";
     }
+
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        printf("Could not determine file size");
+        return;
+    }
+
+    char *response = malloc(512);
+    snprintf(response, 512, "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: %s; charset=UTF-8\r\n"
+                   "Content-Length: %lld\r\n"
+                   "Connection: close\r\n\r\n", content_type, (long long)st.st_size);
 
     // Send response header and file content via SSL
 	SSL_write(ssl, response, strlen(response));
@@ -297,7 +305,6 @@ void send_local_file(SSL *ssl, const char *path) {
             total_written += ret;
         }
     }
-
     fclose(file);
 }
 
