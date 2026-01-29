@@ -223,17 +223,23 @@ void handle_request(SSL *ssl) {
     }
     char *http_version = strtok(NULL, " ");
 
-	char *to_replace = strstr(file_name, "%20");
-	if (to_replace != NULL) {
-		memcpy(to_replace, " ", 1);
-		memmove(to_replace + 1, to_replace + 3, strlen(to_replace + 3) + 1);
-	}
+	char *to_replace = NULL;
 
-	to_replace = strstr(file_name, "%25");
-	if (to_replace != NULL) {
-		memcpy(to_replace, "%", 1);
-		memmove(to_replace + 1, to_replace + 3, strlen(to_replace + 3) + 1);
-	}
+	do {
+		to_replace = strstr(file_name, "%20");
+		if (to_replace != NULL) {
+			memcpy(to_replace, " ", 1);
+			memmove(to_replace + 1, to_replace + 3, strlen(to_replace + 3) + 1);
+		}
+	} while (to_replace != NULL);
+
+	do {
+		to_replace = strstr(file_name, "%25");
+		if (to_replace != NULL) {
+			memcpy(to_replace, "%", 1);
+			memmove(to_replace + 1, to_replace + 3, strlen(to_replace + 3) + 1);
+		}
+	} while (to_replace != NULL);
 
     if (file_exists(file_name)) {
         printf("Sending local file %s\n", file_name);
