@@ -6,6 +6,7 @@
 #include <sys/socket.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <sys/stat.h>
 
 #include <openssl/bio.h>
 
@@ -200,7 +201,7 @@ void handle_request(SSL *ssl) {
     // Read request from SSL connection
     bytes_read = 0;
 
-	int ssl_read_err = SSL_read_ex(ssl, buffer, 50, &bytes_read);
+	int ssl_read_err = SSL_read_ex(ssl, buffer, 1024, &bytes_read);
 
 	if (ssl_read_err <= 0) {
 		printf("error %i\n", ssl_read_err);
@@ -226,6 +227,12 @@ void handle_request(SSL *ssl) {
 	char *to_replace = strstr(file_name, "%20");
 	if (to_replace != NULL) {
 		memcpy(to_replace, " ", 1);
+		memmove(to_replace + 1, to_replace + 3, strlen(to_replace + 3) + 1);
+	}
+
+	to_replace = strstr(file_name, "%25");
+	if (to_replace != NULL) {
+		memcpy(to_replace, "%", 1);
 		memmove(to_replace + 1, to_replace + 3, strlen(to_replace + 3) + 1);
 	}
 
@@ -257,23 +264,30 @@ void send_local_file(SSL *ssl, const char *path) {
         return;
     }
     
-    char *response;
+    char *content_type;
     if (strstr(path, ".html")) {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: text/html; charset=UTF-8\r\n\r\n";
+        content_type = "text/html";
 	} else if (strstr(path, ".txt")) {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: text/plain; charset=UTF-8\r\n\r\n";
+        content_type = "text/plain";
 	} else if (strstr(path, ".jpg")) {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: image/jpeg; charset=UTF-8\r\n\r\n";
+        content_type = "image/jpeg";
 	} else if (strstr(path, ".m3u8")) {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: application/vnd.apple.mpegurl; charset=UTF-8\r\n\r\n";
+        content_type = "application/vnd.apple.mpegurl";
     } else {
-        response = "HTTP/1.1 200 OK\r\n"
-                   "Content-Type: application/octet-stream; charset=UTF-8\r\n\r\n";
+        content_type = "application/octet-stream";
     }
+
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        printf("Could not determine file size");
+        return;
+    }
+
+    char *response = malloc(512);
+    snprintf(response, 512, "HTTP/1.1 200 OK\r\n"
+                   "Content-Type: %s; charset=UTF-8\r\n"
+                   "Content-Length: %lld\r\n"
+                   "Connection: close\r\n\r\n", content_type, (long long)st.st_size);
 
     // Send response header and file content via SSL
 	SSL_write(ssl, response, strlen(response));
@@ -291,11 +305,10 @@ void send_local_file(SSL *ssl, const char *path) {
             total_written += ret;
         }
     }
-
     fclose(file);
 }
 
-// TODO: Forward request to backend server and relay response to client
+// Forward request to backend server and relay response to client
 // Handle connection failures appropriately
 void proxy_remote_file(SSL *ssl, const char *request) {
     int remote_socket;
@@ -306,6 +319,14 @@ void proxy_remote_file(SSL *ssl, const char *request) {
     remote_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (remote_socket == -1) {
         printf("Failed to create remote socket\n");
+
+        char *response = "HTTP/1.1 502 Bad Gateway\r\n"
+                         "Content-Type: text/html; charset=UTF-8\r\n\r\n"
+                         "<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head>"
+                         "<body><h1>502 Bad Gateway</h1></body></html>";
+
+        // Send response via SSL
+		SSL_write(ssl, response, strlen(response));
         return;
     }
 
@@ -315,6 +336,13 @@ void proxy_remote_file(SSL *ssl, const char *request) {
 
     if (connect(remote_socket, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) == -1) {
         printf("Failed to connect to remote server\n");
+        char *response = "HTTP/1.1 502 Bad Gateway\r\n"
+                         "Content-Type: text/html; charset=UTF-8\r\n\r\n"
+                         "<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head>"
+                         "<body><h1>502 Bad Gateway</h1></body></html>";
+
+        // Send response via SSL
+		SSL_write(ssl, response, strlen(response));
         close(remote_socket);
         return;
     }
@@ -322,9 +350,20 @@ void proxy_remote_file(SSL *ssl, const char *request) {
     send(remote_socket, request, strlen(request), 0);
 
     while ((bytes_read = recv(remote_socket, buffer, sizeof(buffer), 0)) > 0) {
-        // TODO: Forward response to client via SSL
-        
+        // Forward response to client via SSL
+        size_t total_written = 0;
+        while (total_written < bytes_read) {
+            int ret = SSL_write(ssl, buffer + total_written, bytes_read - total_written);
+            if (ret <= 0) {
+                int err = SSL_get_error(ssl, ret);
+                if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) continue;
+                ERR_print_errors_fp(stderr);
+                break;
+            }
+            total_written += ret;
+        }
     }
 
     close(remote_socket);
+    return;
 }
