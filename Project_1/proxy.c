@@ -49,7 +49,6 @@ void parse_args(int argc, char *argv[]) {
 					REMOTE_PORT = atoi(argv[i+1]);
 					break;
 			};
-			printf("\n");
 		}
 	}
 
@@ -69,7 +68,7 @@ int main(int argc, char *argv[]) {
 
     // Initialize OpenSSL library
     if (!OPENSSL_init_ssl(0, NULL)) {
-        perror("openssl init failed");
+        perror("Error: openssl init failed");
         exit(EXIT_FAILURE);
     }
 
@@ -79,19 +78,19 @@ int main(int argc, char *argv[]) {
     // Files: "server.crt" and "server.key"
     SSL_CTX *ssl_ctx = SSL_CTX_new(TLS_server_method());
     if (!ssl_ctx) {
-        perror("create SSL context failed");
+        perror("Error: create SSL context failed");
         exit(EXIT_FAILURE);
     }
     if (SSL_CTX_use_certificate_chain_file(ssl_ctx, "server.crt") != 1) {
-        perror("SSL load cert failed");
+        perror("Error: SSL load cert failed");
         exit(EXIT_FAILURE);
     }
     if (SSL_CTX_use_PrivateKey_file(ssl_ctx, "server.key", SSL_FILETYPE_PEM) != 1) {
-        perror("SSL load key failed");
+        perror("Error: SSL load key failed");
         exit(EXIT_FAILURE);
     }
     if (!SSL_CTX_check_private_key(ssl_ctx)) {
-        perror("PKey and Cert don't match");
+        perror("Error: PKey and Cert don't match");
         exit(EXIT_FAILURE);
     }
 
@@ -107,7 +106,7 @@ int main(int argc, char *argv[]) {
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket == -1) {
-        perror("socket failed");
+        perror("Error: socket failed");
         exit(EXIT_FAILURE);
     }
 
@@ -116,7 +115,7 @@ int main(int argc, char *argv[]) {
     server_addr.sin_port = htons(LOCAL_PORT_TO_CLIENT);
 
     if (bind(server_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) == -1) {
-        perror("bind failed");
+        perror("Error: bind failed");
         exit(EXIT_FAILURE);
     }
 
@@ -124,7 +123,7 @@ int main(int argc, char *argv[]) {
     setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval));
 
     if (listen(server_socket, 10) == -1) {
-        perror("listen failed");
+        perror("Error: listen failed");
         exit(EXIT_FAILURE);
     }
 
@@ -204,11 +203,11 @@ void handle_request(SSL *ssl) {
 	int ssl_read_err = SSL_read_ex(ssl, buffer, 1024, &bytes_read);
 
 	if (ssl_read_err <= 0) {
-		printf("error %i\n", ssl_read_err);
+		printf("Error: SSL_read_ex() returned error code %i\n", ssl_read_err);
 	}
 
     if (bytes_read <= 0) {
-		fprintf(stderr, "Error: %i bytes read\n", bytes_read);
+		fprintf(stderr, "Error: %i bytes read in SSL_read_ex()\n", bytes_read);
         return;
     }
 
@@ -279,7 +278,7 @@ void send_local_file(SSL *ssl, const char *path) {
 
     struct stat st;
     if (stat(path, &st) != 0) {
-        printf("Could not determine file size");
+        printf("Error: Could not determine file size");
         return;
     }
 
@@ -318,7 +317,7 @@ void proxy_remote_file(SSL *ssl, const char *request) {
 
     remote_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (remote_socket == -1) {
-        printf("Failed to create remote socket\n");
+        printf("Error: Failed to create remote socket\n");
 
         char *response = "HTTP/1.1 502 Bad Gateway\r\n"
                          "Content-Type: text/html; charset=UTF-8\r\n\r\n"
@@ -335,7 +334,7 @@ void proxy_remote_file(SSL *ssl, const char *request) {
     remote_addr.sin_port = htons(REMOTE_PORT);
 
     if (connect(remote_socket, (struct sockaddr*)&remote_addr, sizeof(remote_addr)) == -1) {
-        printf("Failed to connect to remote server\n");
+        printf("Error: Failed to connect to remote server\n");
         char *response = "HTTP/1.1 502 Bad Gateway\r\n"
                          "Content-Type: text/html; charset=UTF-8\r\n\r\n"
                          "<!DOCTYPE html><html><head><title>502 Bad Gateway</title></head>"
